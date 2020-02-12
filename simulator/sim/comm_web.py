@@ -261,9 +261,7 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
     while True:
       try:
         deframer.send(self.rfile.read(1))
-      except socket.error as e:
-        if e.errno != errno.EAGAIN:
-          raise
+      except Exception:
         break
 
     import select
