@@ -27,6 +27,22 @@ class Route(namedtuple("RouteAd", ["dst", "latency"])):
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
+def assertItemsEqual(actual, expected, message):
+    actual.sort()
+    expected.sort()
+    union = set(actual).union(set(expected))
+    failure = False
+    for item in union:
+        if not item in expected:
+            message += "\n"+"Extraneous Value: "+str(item)
+            failure = True
+    intersection = set(actual).intersection(set(expected))
+    for item in expected:
+        if not item in intersection:
+            message += "\n"+"Missing Value: "+str(item)
+            failure = True
+    if failure:
+        assert True == False, message
 
 class DataPacket(Packet):
     """A packet with data."""
@@ -331,13 +347,13 @@ class TestDVRouterBase(unittest.TestCase):
         if failure:
             self.fail(failure)
         else:
-            if len(expected) > 0 and not "TableEntry" in str((type(expected[expected.keys()[0]]))):
+            if len(expected) > 0 and not "TableEntry" in str((type(expected[list(expected.keys())[0]]))):
                 self.assertDictEqual(t, expected, "BUG: dicts should be equal")
 
     def _assert_packets_sent(self, sent, expected):
         """Asserts that packets sent match expected."""
-        self.assertItemsEqual(
-            sent.keys(), expected.keys(),
+        assertItemsEqual(
+            list(sent.keys()), list(expected.keys()),
             "BUG: ports mismatch for sent packets"
         )
 
@@ -375,8 +391,8 @@ class TestDVRouterBase(unittest.TestCase):
 
         :param expected: dict mapping port => set of Route objects.
         """
-        self.assertItemsEqual(
-            sent.keys(), expected_sets.keys(),
+        assertItemsEqual(
+            list(sent.keys()), list(expected_sets.keys()),
             "BUG: ports mismatch for sent route advertisements"
         )
 
@@ -428,8 +444,8 @@ class TestDVRouterBase(unittest.TestCase):
 
         :param expected: dict mapping port => set of Route objects.
         """
-        self.assertItemsEqual(
-            sent.keys(), expected_sets.keys(),
+        assertItemsEqual(
+            list(sent.keys()), list(expected_sets.keys()),
             "BUG: ports mismatch for sent route advertisements"
         )
 

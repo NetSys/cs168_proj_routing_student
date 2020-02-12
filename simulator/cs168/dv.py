@@ -162,7 +162,7 @@ class DVRouterBase (api.Entity):
 
 #TODO: Move this stuff to top of file?
 
-import abc
+#import abc
 from collections import namedtuple
 from numbers import Number  # Available in Python >= 2.7.
 import unittest
@@ -182,8 +182,8 @@ INFINITY = 100
 
 
 class _ValidatedDict (dict):
-  __metaclass__ = abc.ABCMeta
-
+#  __metaclass__ = abc.ABCMeta
+#
   def __init__ (self, *args, **kwargs):
     super(_ValidatedDict, self).__init__(*args, **kwargs)
     for k, v in self.items():
@@ -198,10 +198,11 @@ class _ValidatedDict (dict):
     for k, v in self.items():
       self.validate(k, v)
 
-  @abc.abstractmethod
+  #@abc.abstractmethod
   def validate (self, key, value):
     """Raises ValueError if (key, value) is invalid."""
-    pass
+    #pass
+    raise NotImplementedError("Dict validation not implemented")
 
 
 

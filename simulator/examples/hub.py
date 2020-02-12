@@ -1,7 +1,7 @@
-from sim.api import *
+import sim.api as api
 from sim.basics import *
 
-class Hub (Entity):
+class Hub (api.Entity):
   """
   A dumb hub.
 

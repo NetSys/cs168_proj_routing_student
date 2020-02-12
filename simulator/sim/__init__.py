@@ -1,11 +1,9 @@
 """
 The network simulator.
-
 This file contains a singleton which holds simulator configuration (sim.config)
 and some helper junk.  The former *may* be useful to take a look at, but
 generally the useful options can be set through the commandline in boot and
 are hopefully documented there or elsewhere.
-
 Students are expected to use api and basics, and should stay out most of the
 rest of the files (particularly core).  cable *may* be useful if you want to
 get very fancy with your testing.
@@ -90,7 +88,6 @@ def _issubclass (sub, sup):
 def _find_host_type (name):
   """
   Tries to load a given entity by name
-
   Also works if it's just passed an entity!
   """
   if not name: return None
@@ -98,6 +95,7 @@ def _find_host_type (name):
   if _issubclass(name, api.Entity): return name
 
   module = _try_import(name, False)
+  import sys
   if not module:
     if "." in name:
       mname,oname = name.rsplit(".", 1)
@@ -109,6 +107,8 @@ def _find_host_type (name):
   else:
     o = None
     for k,v in vars(module).items():
+      if not hasattr(v, "__module__"): continue
+      if sys.modules.get(v.__module__) is not module: continue
       if k == "DefaultHostType": return v
       if _issubclass(v, api.HostEntity) and not o and v.__module__ == name:
         o = v
@@ -119,7 +119,6 @@ def _find_host_type (name):
 def _find_switch_type (name):
   """
   Tries to load a given entity by name
-
   Also works if it's just passed an entity!
   """
   if not name: return None
@@ -127,6 +126,7 @@ def _find_switch_type (name):
   if _issubclass(name, api.Entity): return name
 
   module = _try_import(name, False)
+  import sys
   if not module:
     if "." in name:
       mname,oname = name.rsplit(".", 1)
@@ -138,6 +138,8 @@ def _find_switch_type (name):
   else:
     o = None
     for k,v in vars(module).items():
+      if not hasattr(v, "__module__"): continue
+      if sys.modules.get(v.__module__) is not module: continue
       if k == "DefaultSwitchType": return v
       if _issubclass(v, api.Entity) and not _issubclass(v, api.HostEntity):
         if not o:

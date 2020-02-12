@@ -21,7 +21,6 @@ class BasicHost (api.HostEntity):
   def handle_link_up (self, port, latency):
     """
     When a link comes up, send a message to the other side
-
     This is us saying hello so that the other side knows who we are.  In the
     real world this is *vaguely* similar to some uses of ARP, maybe DHCP,
     IPv6 NDP, and probably some others.  But only vaguely.
@@ -32,7 +31,6 @@ class BasicHost (api.HostEntity):
   def handle_rx (self, packet, port):
     """
     Handle packets for the BasicHost
-
     Silently drops messages to nobody.
     Warns about received messages to someone besides itself.
     Prints received messages.
@@ -84,7 +82,6 @@ class Ping (api.Packet):
 class Pong (api.Packet):
   """
   A Pong packet
-
   It's a returned Ping.  The original Ping is in the .original property.
   """
   def __init__ (self, original):
@@ -108,3 +105,40 @@ class HostDiscoveryPacket (api.Packet):
     super(HostDiscoveryPacket, self).__init__(*args, **kw)
     self.outer_color = [1,1,0,1]
     self.inner_color = [1,1,0.5,0.5]
+
+
+class RoutePacket (api.Packet):
+  def __init__ (self, destination, latency):
+    super(RoutePacket,self).__init__()
+    self.latency = latency
+    self.destination = destination
+    self.outer_color = [1,0,1,1]
+    self.inner_color = [1,0,1,1]
+
+  def __repr__ (self):
+    return "<RoutePacket to %s at cost %s>" % (self.destination, self.latency)
+
+
+class DVRouterBase (api.Entity):
+  """
+  Base class for implementing a distance vector router
+  """
+  POISON_MODE = False # If self.POISON_MODE is True, send poisons.
+  DEFAULT_TIMER_INTERVAL = 5 # Default timer interval.
+
+  def start_timer (self, interval = None):
+    """
+    Start the timer that calls handle_timer()
+    This should get called in the constructor.  You shouldn't override this.
+    """
+    if interval is None:
+      interval = self.DEFAULT_TIMER_INTERVAL
+      if interval is None: return
+    api.create_timer(interval, self.handle_timer)
+
+  def handle_timer (self):
+    """
+    Called periodically when the router should send tables to neighbors
+    You probably want to override this.
+    """
+    pass

@@ -245,6 +245,9 @@ class Entity (object):
   NO_LOG = False # Can be used to force off the log for this entity
   LOG_LEVEL = "debug" # Default level for .log()
 
+  def __lt__(self, other):
+    return self.name < other.name
+
   @classmethod
   def create (cls, name, *args, **kw):
     """

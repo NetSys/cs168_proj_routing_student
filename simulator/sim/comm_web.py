@@ -1,7 +1,6 @@
 """
 This module lets the simulator communicate with external things like the
 WebNetVis.
-
 The factoring with comm_tcp is really ugly.  The comm stuff in general
 is all pretty far off from where it started now.  It's gotten crufty and
 needs a major rewrite/refactor.
@@ -10,6 +9,7 @@ needs a major rewrite/refactor.
 import sim
 import sim.comm as comm
 import socket
+import errno
 import json
 import threading
 import traceback
@@ -22,10 +22,9 @@ import sim.core as core
 log = logging.getLogger("web")
 log.setLevel(logging.INFO)
 
-from comm_tcp import StreamingConnection
+from .comm_tcp import StreamingConnection
 
 import posixpath
-import urllib
 import base64
 import hashlib
 import struct
@@ -34,10 +33,29 @@ import sys
 import os
 _base_path = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])),"../netvis/NetVis/")
 
-from SimpleHTTPServer import SimpleHTTPRequestHandler
-from BaseHTTPServer import HTTPServer
-from SocketServer import ThreadingMixIn
+try:
+  from SimpleHTTPServer import SimpleHTTPRequestHandler
+  from BaseHTTPServer import HTTPServer
+  from SocketServer import ThreadingMixIn
+  import urllib
+  url_unquote = urllib.unquote
+except:
+  from http.server import SimpleHTTPRequestHandler
+  from http.server import HTTPServer
+  from socketserver import ThreadingMixIn
+  import urllib.parse
+  url_unquote = urllib.parse.unquote
 
+
+try:
+  _ = b' '[0] + 1
+  # Python3
+  _ord = lambda x:x
+  _chr = lambda x:bytes([x])
+except Exception:
+  # Python2
+  _ord = ord
+  _chr = chr
 
 class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
   _websocket_open = False # Should be protected by a lock, but isn't
@@ -57,7 +75,6 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
   def translate_path (self, path):
     """
     Translate a web path to a local filesystem path
-
     This is substantially similar to the one in the base class, but it
     doesn't have an unhealthy relationship with the current working
     directory.
@@ -65,7 +82,7 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
     out_path = self._get_base_path()
     path = path.split('?',1)[0].split('#',1)[0].strip()
     has_trailing_slash = path.endswith('/')
-    parts = posixpath.normpath(urllib.unquote(path)).split('/')
+    parts = posixpath.normpath(url_unquote(path)).split('/')
     for part in parts:
       if not part.replace('.',''): continue
       if os.path.dirname(part): continue
@@ -142,8 +159,10 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
     self.send_response(101, "Switching Protocols")
     k = self.headers.get("Sec-WebSocket-Key", "")
     k += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-    self.send_header("Sec-WebSocket-Accept",
-                     base64.b64encode(hashlib.sha1(k).digest()))
+    k = k.encode("UTF-8")
+    k = base64.b64encode(hashlib.sha1(k).digest())
+    k = k.decode("UTF-8")
+    self.send_header("Sec-WebSocket-Accept", k)
     self.send_header("Upgrade", "websocket")
     self.send_header("Connection", "Upgrade")
     self.end_headers()
@@ -158,7 +177,8 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
       hdr = b''
       while self._websocket_open:
         while len(hdr) < 2:
-          hdr += yield True
+          newdata = yield True
+          if newdata: hdr += newdata
 
         flags_op,len1 = struct.unpack_from("!BB", hdr, 0)
         op = flags_op & 0x0f
@@ -187,7 +207,7 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
         while len(hdr) < 4:
           hdr += yield True
 
-        mask = [ord(x) for x in hdr[:4]]
+        mask = [_ord(x) for x in hdr[:4]]
         hdr = hdr[4:]
 
         while len(hdr) < length:
@@ -196,7 +216,7 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
         d = hdr[:length]
         hdr = hdr[length:]
 
-        d = b"".join(chr(ord(c) ^ mask[i % 4]) for i,c in enumerate(d))
+        d = b"".join(_chr(_ord(c) ^ mask[i % 4]) for i,c in enumerate(d))
 
         if not fin:
           if op == self.WS_CONTINUE:
@@ -229,7 +249,10 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
             pass # Do nothing for unknown type
 
     deframer = feeder()
-    deframer.send(None)
+    try:
+      deframer.send(None)
+    except StopIteration:
+      pass # PEP 479?
 
     # This is nutso, but it just might work.
     # *Try* to read individual bytes from rfile in case it has some
@@ -237,8 +260,10 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
     self.connection.settimeout(0)
     while True:
       try:
-        dframer.send(self.rfile.read(1))
-      except Exception:
+        deframer.send(self.rfile.read(1))
+      except socket.error as e:
+        if e.errno != errno.EAGAIN:
+          raise
         break
 
     import select
@@ -275,7 +300,7 @@ class WebHandler (SimpleHTTPRequestHandler, StreamingConnection):
       return super(WebHandler,self).do_GET()
 
   def _ws_message (self, opcode, data):
-    self._process_incoming(data)
+    self._process_incoming(data.encode("UTF-8"))
 
   def _process_incoming (self, l):
     """
@@ -372,17 +397,30 @@ class WebInterface (ThreadingMixIn, HTTPServer):
   def __init__ (self):
     self.connections = []
 
-    HTTPServer.__init__(self, (sim.config.remote_interface_address,
-                               sim.config.remote_interface_port),
-                              WebHandler)
+    try:
+      HTTPServer.__init__(self, (sim.config.remote_interface_address,
+                                 sim.config.remote_interface_port),
+                                WebHandler)
+    except OSError as e:
+      if e.errno == errno.EADDRINUSE:
+        log.error("The webserver could not be started because the listening "
+                  "port\nis already in use. "
+                  "Try setting a different port by using the\n"
+                  "--remote-interface-port=X option near the "
+                  "start of the commandline,\nwhere X is a valid TCP port "
+                  "number.")
+        return
+      raise
+
 
     self.thread = threading.Thread(target = self._start)
     self.thread.daemon = True
     self.thread.start()
 
-    log.info("Webserver running at %s:%s",
-             sim.config.remote_interface_address,
-             sim.config.remote_interface_port)
+    laddr = self.socket.getsockname()
+    log.info("Webserver running at http://%s:%s",
+             laddr[0],
+             laddr[1])
 
   def _start (self):
     self.serve_forever()
